@@ -1,10 +1,13 @@
-const Zigbee2mqttHelper = require('../lib/Zigbee2mqttHelper.js');
-var mqtt = require('mqtt');
+import { Zigbee2mqttHelper } from './lib/Zigbee2mqttHelper.js'
+import { NodeAPI } from 'node-red'
+
+import * as mqtt from 'mqtt'
+
 var Viz = require('viz.js');
 var { Module, render } = require('viz.js/full.render.js');
 
-module.exports = function (RED) {
-    class ServerNode{
+module.exports = function (RED: NodeAPI) {
+    class ServerNode {
         constructor(n) {
             RED.nodes.createNode(this, n);
 
@@ -619,4 +622,3 @@ module.exports = function (RED) {
 
     RED.nodes.registerType('zigbee2mqtt-server', ServerNode, {});
 };
-

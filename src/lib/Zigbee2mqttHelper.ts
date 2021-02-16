@@ -1,20 +1,91 @@
-'use strict';
+enum State {
+    ON = "ON",
+    OFF = "OFF",
 
+    LOCK = "LOCK",
+    UNLOCK = "UNLOCK",
+}
 
-class Zigbee2mqttHelper {
-    static generateSelector(topic) {
+interface Payload {
+    brightness?: number
+    state?: State
+    color?: {
+        hue?: number
+        saturation?: number
+        x?: number
+        y?: number
+    }
+    color_temp?: number
+
+    position?: number
+    running?: number
+
+    temperature?: number
+
+    humidity?: number
+
+    illuminance_lux?: number
+
+    contact?: number
+
+    occupancy?: number
+
+    water_leak?: number
+
+    battery?: number
+}
+
+interface HomeKitResponse {
+    Lightbulb?: { On: boolean, Brightness?: number }
+    Lightbulb_CT?: { On: boolean, Brightness?: number, ColorTemperature?: number }
+    Lightbulb_RGB?: { On: boolean, Brightness?: number, Hue?: number, Saturation?: number }
+    Lightbulb_RGB_CT?: { On: boolean, Brightness?: number, ColorTemperature?: number, Hue?: number, Saturation?: number }
+
+    LockMechanism?: { LockCurrentState?: number, LockTargetState?: number }
+
+    Window?: { CurrentPosition?: number, TargetPosition?: number, PositionState: number }
+    WindowCovering?: { CurrentPosition?: number, TargetPosition?: number, PositionState: number }
+    Door?: { CurrentPosition?: number, TargetPosition?: number, PositionState: number }
+
+    TemperatureSensor?: { CurrentTemperature?: number }
+
+    HumiditySensor?: { CurrentRelativeHumidity?: number }
+
+    LightSensor?: { CurrentAmbientLightLevel?: number }
+
+    ContactSensor?: { ContactSensorState?: number }
+    ContactSensor_Inverse?: { ContactSensorState?: number }
+
+    MotionSensor?: { MotionDetected?: number }
+
+    LeakSensor?: { LeakDetected?: number }
+
+    Battery?: { BatteryLevel?: number, StatusLowBattery?: number }
+
+    Switch?: { On?: boolean }
+}
+
+interface ColorResponse {
+    color?: {
+        rgb?: { r: number, g: number, b: number }
+        hsv?: { h: number, s: number, v: number }
+    }
+}
+
+export class Zigbee2mqttHelper {
+    static generateSelector(topic: string) {
         var arr = topic.split('/');
-        return (arr[2]+'-'+arr[4]).replace(/[^a-zA-Z0-9_-]/g, '');
+        return (arr[2] + '-' + arr[4]).replace(/[^a-zA-Z0-9_-]/g, '');
     }
 
-    static convertRange(value, r1, r2 ) {
+    static convertRange(value: number, r1: [number, number], r2: [number, number]) {
         var val = Math.ceil((value - r1[0]) * (r2[1] - r2[0]) / ( r1[1] - r1[0] ) + r2[0]);
         if (val < r2[0]) val = r2[0];
         if (val > r2[1]) val = r2[1];
         return val;
     }
 
-    static isJson(str) {
+    static isJson(str: string) {
         try {
             JSON.parse(str);
         } catch (e) {
@@ -23,7 +94,7 @@ class Zigbee2mqttHelper {
         return true;
     }
 
-    static cie2rgb(x, y, brightness)
+    static cie2rgb(x: number, y: number, brightness: number)
     {
         //Set to maximum brightness if no custom value was given (Not the slick ECMAScript 6 way for compatibility reasons)
         if (brightness === undefined) {
@@ -31,7 +102,7 @@ class Zigbee2mqttHelper {
         }
 
         var z = 1.0 - x - y;
-        var Y = (brightness / 254).toFixed(2);
+        var Y = Number((brightness / 254).toFixed(2));
         var X = (Y / y) * x;
         var Z = (Y / y) * z;
 
@@ -88,15 +159,16 @@ class Zigbee2mqttHelper {
         };
     }
 
-    static rgb2hsv (r, g, b) {
-        let rabs, gabs, babs, rr, gg, bb, h, s, v, diff, diffc, percentRoundFn;
+    static rgb2hsv (r: number, g: number, b: number) {
+        let rabs, gabs, babs, rr, gg, bb, diff: number, diffc, percentRoundFn;
+        let h = 0, s = 0, v = 0;
         rabs = r / 255;
         gabs = g / 255;
         babs = b / 255;
-        v = Math.max(rabs, gabs, babs),
-            diff = v - Math.min(rabs, gabs, babs);
-        diffc = c => (v - c) / 6 / diff + 1 / 2;
-        percentRoundFn = num => Math.round(num * 100) / 100;
+        v = Math.max(rabs, gabs, babs);
+        diff = v - Math.min(rabs, gabs, babs);
+        diffc = (c: number) => (v - c) / 6 / diff + 1 / 2;
+        percentRoundFn = (num: number) => Math.round(num * 100) / 100;
         if (diff == 0) {
             h = s = 0;
         } else {
@@ -114,7 +186,7 @@ class Zigbee2mqttHelper {
             }
             if (h < 0) {
                 h += 1;
-            }else if (h > 1) {
+            } else if (h > 1) {
                 h -= 1;
             }
         }
@@ -125,8 +197,8 @@ class Zigbee2mqttHelper {
         };
     }
 
-    static payload2homekit(payload, device) {
-        var msg = {};
+    static payload2homekit(payload: Payload, _device: any) {
+        const msg: HomeKitResponse = {};
 
         //Lightbulb
         if ("brightness" in payload) {
@@ -142,20 +214,20 @@ class Zigbee2mqttHelper {
                     msg["Lightbulb_RGB_CT"] = {"On": false};
                 }
             } else {
-
                 var hue = null;
                 var sat = null;
-                if ("color" in payload  && "hue" in payload.color && "saturation" in payload.color) {
+                if ("color" in payload  && "hue" in payload.color! && "saturation" in payload.color) {
                     hue = payload.color.hue;
                     sat = payload.color.saturation;
-                } else if ("color" in payload && "x" in payload.color) {
-                    var rgb = Zigbee2mqttHelper.cie2rgb(payload.color.x, payload.color.y, payload.brightness);
+                } else if ("color" in payload && "x" in payload.color!) {
+                    var rgb = Zigbee2mqttHelper.cie2rgb(payload.color.x!, payload.color.y!, payload.brightness!);
                     var hsv = Zigbee2mqttHelper.rgb2hsv(rgb.r, rgb.g, rgb.b);
                     hue = hsv.h;
                     sat = hsv.s;
                 }
-                var bri = Zigbee2mqttHelper.convertRange(parseInt(payload.brightness), [0, 255], [0, 100]);
-                var ct = "color_temp" in payload?Zigbee2mqttHelper.convertRange(parseInt(payload.color_temp), [50,400], [140,500]):null;
+
+                const bri = Zigbee2mqttHelper.convertRange(payload.brightness!, [0, 255], [0, 100]);
+                const ct = "color_temp" in payload?Zigbee2mqttHelper.convertRange(payload.color_temp!, [50,400], [140,500]):null;
 
                 msg["Lightbulb"] = {
                     "On": true,
@@ -165,24 +237,24 @@ class Zigbee2mqttHelper {
                     msg["Lightbulb_CT"] = {
                         "On": true,
                         "Brightness": bri,
-                        "ColorTemperature": ct
+                        "ColorTemperature": ct!
                     }
                 }
                 if ("color" in payload) {
                     msg["Lightbulb_RGB"] = {
                         "On": true,
                         "Brightness": bri,
-                        "Hue": hue,
-                        "Saturation": sat
+                        "Hue": hue!,
+                        "Saturation": sat!,
                     }
                 }
                 if ("color" in payload && "color_temp" in payload) {
                     msg["Lightbulb_RGB_CT"] = {
                         "On": true,
                         "Brightness": bri,
-                        "Hue": hue,
-                        "Saturation": sat,
-                        "ColorTemperature": ct
+                        "Hue": hue!,
+                        "Saturation": sat!,
+                        "ColorTemperature": ct!,
                     }
                 }
             }
@@ -201,8 +273,8 @@ class Zigbee2mqttHelper {
         //Door
         if ('position' in payload) {
             msg["Window"] = msg["WindowCovering"] = msg["Door"] = {
-                "CurrentPosition":parseInt(payload.position),
-                "TargetPosition":parseInt(payload.position),
+                "CurrentPosition":payload.position,
+                "TargetPosition":payload.position,
                 "PositionState":payload.running?1:2 //increasing=1, stopped=2
             };
         }
@@ -211,21 +283,21 @@ class Zigbee2mqttHelper {
         //TemperatureSensor
         if ('temperature' in payload) {
             msg["TemperatureSensor"] = {
-                "CurrentTemperature":parseFloat(payload.temperature)
+                "CurrentTemperature":payload.temperature
             };
         }
 
         //HumiditySensor
         if ('humidity' in payload) {
             msg["HumiditySensor"] = {
-                "CurrentRelativeHumidity":parseFloat(payload.humidity)
+                "CurrentRelativeHumidity":payload.humidity
             };
         }
 
         //LightSensor
         if ('illuminance_lux' in payload) {
             msg["LightSensor"] = {
-                "CurrentAmbientLightLevel":parseInt(payload.illuminance_lux)
+                "CurrentAmbientLightLevel":payload.illuminance_lux
             };
         }
 
@@ -260,8 +332,8 @@ class Zigbee2mqttHelper {
         // if ("powerSource" in device && "Battery" == device.powerSource && "battery" in payload && parseInt(payload.battery)>0) {
         if ('battery' in payload) {
             msg["Battery"] = {
-                "BatteryLevel": parseInt(payload.battery),
-                "StatusLowBattery": parseInt(payload.battery) <= 15 ? 1 : 0
+                "BatteryLevel": payload.battery,
+                "StatusLowBattery": payload.battery! <= 15 ? 1 : 0
             };
         }
 
@@ -276,14 +348,13 @@ class Zigbee2mqttHelper {
         return msg;
     }
 
-    static formatPayload(payload, device) {
-        var node = this;
-        var result = {};
+    static formatPayload(payload: Payload, _device: any) {
+        var result: ColorResponse = {};
 
         //convert XY to RGB, HSV
-        if ("color" in payload && "x" in payload.color) {
+        if ("color" in payload && "x" in payload.color!) {
             var bri = "brightness" in payload?payload.brightness:255;
-            var rgb = Zigbee2mqttHelper.cie2rgb(payload.color.x, payload.color.y, bri);
+            var rgb = Zigbee2mqttHelper.cie2rgb(payload.color.x!, payload.color.y!, bri!);
             var hsv = Zigbee2mqttHelper.rgb2hsv(rgb.r, rgb.g, rgb.b);
             result['color'] = {
                 "rgb":rgb,
@@ -293,5 +364,3 @@ class Zigbee2mqttHelper {
         return result;
     }
 }
-
-module.exports = Zigbee2mqttHelper;
